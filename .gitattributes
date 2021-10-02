@@ -1,0 +1,4 @@
+*2021VAERSData.csv filter=lfs diff=lfs merge=lfs -text
+*2021VAERSData* filter=lfs diff=lfs merge=lfs -text
+dataset/2021VAERSData.csv filter=lfs diff=lfs merge=lfs -text
+/Users/leehyejin/COVID19_vaccination/dataset/2021VAERSData.csv filter=lfs diff=lfs merge=lfs -text

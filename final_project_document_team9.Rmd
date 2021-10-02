@@ -1,0 +1,616 @@
+---
+title: "CS492(B) final project: A study on COVID-19 vaccination dataset"
+author:
+  - Team 9
+  - 20180526 Lee Hyejin  
+  - 20190436 Lee Kyungmin 
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE,  warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root.dir = normalizePath("C:/Users/LeeHyejin/Desktop/R_project")) #set to where the "dataset" directory is".
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(rworldmap)
+library(rstatix)
+library(ggpubr)
+library(tidyverse)
+library(tidymodels)
+library(randomForest)
+library(randomForestExplainer)
+```
+
+## I. Introduction
+ 
+### I-1 Motivation  
+
+  Today, COVID-19 vaccination is a very popular topic since most of the countries are doing their best on it. Some of the countries are about to form the social immunity (herd immunity), but Korea is in the beginning. Since there are various datasets related to COVID-19 vaccination, we chose this topic for our project.  
+
+  We thought that by analyzing the real data, we have to get an insight about the current worldwide vaccination progress and the details of COVID-19 vaccination.  
+
+### I-2 Previous Works  
+
+  There are some previous works exist related to COVID-19 vaccination.   
+
+  In Kaggle, there are various COVID-19 vaccination-related tasks such as tracking the progress of COVID-19 vaccination. Those tasks, however, are only efficient to know about the vaccination progress itself. Since we wanted to know deeply about the effect of vaccination and the details of it, these tasks were not enough to fulfill our needs.  
+
+  Also, there is a paper published, with a title "COVID-19 dynamics after a national immunization program in Israel." This paper shows the effect of vaccination in COVID-19 seriousness, but gives only a qualitative measure.
+
+### I-3. Objectives
+
+  Here, our final goal is to analyze COVID-19 vaccination datasets in various ways and propose the **guidelines for vaccination**. To achieve the goal, we started with four big questions.  
+ 1. Does vaccination really alleviates COVID-19 seriousness?  
+ 2. What is more important between vaccination and several social distancing policies?  
+ 3. Which adverse effects are common in the vaccines?  
+ 4. Can we have less stringent social distancing after vaccination?  
+
+## II. Datasets
+
+### II-1. Our World In Data COVID-19 dataset
+
+(link : https://ourworldindata.org/coronavirus)
+```{r owid, echo=FALSE,  warning = FALSE}
+owid_covid <- read.csv("dataset/owid-covid-data.csv")
+testing_policy.df <- read.csv("dataset/covid-19-testing-policy.csv")
+contact_tracing.df <- read.csv("dataset/covid-contact-tracing.csv")
+face_covering.df <- read.csv("dataset/face-covering-policies-covid.csv")
+internal_movement.df <- read.csv("dataset/internal-movement-covid.csv")
+international_travel.df <- read.csv("dataset/international-travel-covid.csv")
+public_events.df <- read.csv("dataset/public-events-covid.csv")
+public_gathering.df <- read.csv("dataset/public-gathering-rules-covid.csv")
+public_transport.df <- read.csv("dataset/public-transport-covid.csv")
+school_closure.df <- read.csv("dataset/school-closures-covid.csv")
+stay_at_home.df <- read.csv("dataset/stay-at-home-covid.csv")
+workplace_closure.df <- read.csv("dataset/workplace-closures-covid.csv")
+
+testing_policy.df <- rename(testing_policy.df, iso_code = Code, date = Day) %>% select(-Entity)
+contact_tracing.df <- rename(contact_tracing.df, iso_code = Code, date = Day) %>% select(-Entity)
+face_covering.df <- rename(face_covering.df, iso_code = Code, date = Day) %>% select(-Entity)
+internal_movement.df <- rename(internal_movement.df, iso_code = Code, date = Day) %>% select(-Entity)
+international_travel.df <- rename(international_travel.df, iso_code = Code, date = Day) %>% select(-Entity)
+public_events.df <- rename(public_events.df, iso_code = Code, date = Day) %>% select(-Entity)
+public_gathering.df <- rename(public_gathering.df, iso_code = Code, date = Day) %>% select(-Entity)
+public_transport.df <- rename(public_transport.df, iso_code = Code, date = Day) %>% select(-Entity)
+school_closure.df <- rename(school_closure.df, iso_code = Code, date = Day) %>% select(-Entity)
+stay_at_home.df <- rename(stay_at_home.df, iso_code = Code, date = Day) %>% select(-Entity)
+workplace_closure.df <- rename(workplace_closure.df, iso_code = Code, date = Day) %>% select(-Entity)
+
+full_dataset <- owid_covid %>% 
+  inner_join(testing_policy.df, by = c("iso_code", "date"))%>%
+  inner_join(contact_tracing.df, by = c("iso_code", "date"))%>%
+  inner_join(face_covering.df, by = c("iso_code", "date"))%>%
+  inner_join(internal_movement.df, by = c("iso_code", "date"))%>%
+  inner_join(international_travel.df, by = c("iso_code", "date"))%>%
+  inner_join(public_events.df, by = c("iso_code", "date"))%>%
+  inner_join(public_gathering.df, by = c("iso_code", "date"))%>%
+  inner_join(public_transport.df, by = c("iso_code", "date"))%>%
+  inner_join(school_closure.df, by = c("iso_code", "date"))%>%
+  inner_join(stay_at_home.df, by = c("iso_code", "date")) %>%
+  inner_join(workplace_closure.df, by = c("iso_code", "date")) %>%
+  mutate(date = as.Date(date))
+```
+
+  In this project, we mainly used "Our World In Data COVID-19 dataset". This dataset inicludes 12 csv files in total.   
+  
+  The first csv file, 'owid-covid-data.csv' includes daily measures by country for COVID-19 seriousness, vaccination progress, and some additional information of the countries. 
+```{r, echo = FALSE,  warning = FALSE}
+colnames(owid_covid)
+```
+  There are three kinds of variables in the dataset. First is the observations of COVID-19 seriousness. This includes new_cases, new_deaths, icu_patients and hosp_patients. THe second one is the observations of COVID-19 vaccination and this includes people_vaccinated and people_fully_vaccinated. The last one is the extra information about the countries such as population, female_smokers or life_expentancy. 
+  
+```{r echo = FALSE, warning = FALSE}
+owid_covid %>% 
+  select(new_cases, new_deaths, icu_patients, hosp_patients) %>%
+  summary()
+```
+ Between various COVID-19 seriousness measures, we found that icu_patients and hosp_patients have lots of NA values inside, so we decided not to use those measures. For the all analysis, we will use only cases and deaths for the analysis.
+
+
+### II-2. VAERS (Vaccine Adverse Effect Report System) dataset  
+
+(link : https://vaers.hhs.gov/data.html)
+
+```{r, echo = FALSE,  warning = FALSE}
+vaersdata <- read.csv("dataset/2021VAERSData.csv")
+vaersvax <- read.csv("dataset/2021VAERSVAX.csv")
+vaerssym <- read.csv("dataset/2021VAERSSYMPTOMS.csv")
+
+vaersvax <- vaersvax %>%
+  filter(VAX_TYPE == "COVID19") %>%
+  select(VAERS_ID, VAX_TYPE, VAX_MANU)
+
+vaerssym <- vaerssym %>%
+  select(VAERS_ID, SYMPTOM1, SYMPTOM2, SYMPTOM3,SYMPTOM4,SYMPTOM5)
+
+vaersdata <- vaersdata %>%
+  select(VAERS_ID, CAGE_YR, SEX)
+
+full_vacc_dataset <- vaersdata %>%
+  inner_join(vaersvax, by = "VAERS_ID") %>%
+  inner_join(vaerssym, by = "VAERS_ID")
+
+tidy_vacc <- full_vacc_dataset %>% 
+  gather(key = "temp", value = "symptom", "SYMPTOM1", "SYMPTOM2", "SYMPTOM3", "SYMPTOM4", "SYMPTOM5") %>%
+  filter(!is.na(symptom)) %>%
+  filter(symptom != "") %>%
+  select(-c(temp, VAX_TYPE)) 
+```
+ For vaccination adverse effect analysis, we used VAERS (Vaccination Adverse Effect Report System) dataset. This dataset is not only for COVID-19 and includes several other vaccines, but in 2021 data, it mainly contains data about COVID-19 vaccines. Three datasets were used in total, VAERSdata, VAERSVAX and VAERSSYMPTOMS. 
+
+## III. Data Anaylsis and Interpretation
+
+### III-1. Data overview
+
+  First, we got a brief look about how vaccination is going on all around the world.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#full_dataset %>% filter(date == as.Date("2021-5-21")) -> recentdata 
+
+#mapped_data <- joinCountryData2Map(recentdata, joinCode = 'ISO3', nameJoinColumn = "iso_code")
+#par(mfrow=c(2,2))
+#mapCountryData(mapped_data,nameColumnToPlot='total_cases_per_million', mapTitle ="COVID-19 cases by country")
+#mapCountryData(mapped_data, nameColumnToPlot = 'total_deaths_per_million', mapTitle = 'COVID_19 deaths by country')
+#mapCountryData(mapped_data, nameColumnToPlot = 'total_vaccinations_per_hundred', mapTitle = 'COVID-19 vaccination by country')
+```
+
+
+```{r, echo = FALSE,  warning = FALSE}
+data_CHL <- full_dataset %>%
+  filter(location == "Chile" ) %>%
+  filter(date > as.Date("2020-12-16")) 
+data_ISR <- full_dataset %>%
+  filter(location == "Israel" ) %>%
+  filter(date > as.Date("2020-12-16")) 
+data_GBR <- full_dataset %>%
+  filter(location == "United Kingdom" ) %>%
+  filter(date > as.Date("2020-12-16")) 
+data_USA <- full_dataset %>%
+  filter(location == "United States" ) %>%
+  filter(date > as.Date("2020-12-16")) 
+  
+top4_vaccine <- ggplot() +
+  geom_line(data = data_CHL, aes(x = date, y = people_vaccinated_per_hundred, colour = "Chile")) +
+  geom_line(data = data_ISR, aes(x = date, y = people_vaccinated_per_hundred, colour = "Israel")) +
+  geom_line(data = data_GBR, aes(x = date, y = people_vaccinated_per_hundred, colour = "United Kingdom")) +
+  geom_line(data = data_USA, aes(x = date, y = people_vaccinated_per_hundred, colour = "United States"))+
+  labs(title="Top 4 vaccinated countries",x ="Date", y = "people vaccinated per hundred")
+
+KOR_vaccine <- full_dataset %>%
+  filter(iso_code == "KOR") %>%
+  filter(date > as.Date("2020-12-16")) %>%
+  ggplot() +
+  geom_line(aes(x = date, y = people_vaccinated_per_hundred)) +
+  labs(title = "Korea vaccinated", x = "Date", y = "people vaccinated per hundred") -> KOR_vaccine
+
+grid.arrange(top4_vaccine, KOR_vaccine, ncol = 1)
+```
+
+ These two are the representative figures. Some top vaccinated countries are reaching about 60%. Especially, Israel is showing the fastest vaccination all around the world. However, Korea's vaccination is still about 10%, which is far less compared to those top vaccinated countries.
+
+### III-2. Does vaccination really alleviates COVID-19 seriousness?
+
+  In this section, we tried to find out whether there is an effect of vaccination on COVID-19 seriousness.
+  For this purpose, we first preprocessed the data. Here, we thought that the new cases or cases per million itself cannot represent the "alleviation" effect. Thus we made a new variable, "case_change". Case change is defined as the new cases after vaccination devided by the total cases before vaccination. 
+```{r,  warning = FALSE}
+full_dataset %>% 
+  filter(!is.na(people_vaccinated)) %>%
+  select(date) %>%
+  summary()
+```
+  In the above summary, we could find that the first vaccination case was reported in "2020-12-02". Thus, case_change is defined by mean(new_cases_per_milion between 2021-05-03 and 2021-05-16) / total_cases_per_million before 2020- 12-01.  
+  
+  So, the data processing is like the code below. "after_vaccination", and "before_vaccination" was extracted from the dataset, joined by country, and the new variable "case_change" was added. With the same principle, "death_change" was also defined. 
+```{r,  warning = FALSE}
+start_date <- as.Date("2021-05-3"); end_date <- as.Date("2021-05-16")
+after_vaccination <- owid_covid %>%
+  filter(date >= start_date & date <= end_date) %>%
+  filter(population >= 5000000) %>%
+  group_by(iso_code) %>%
+  summarise(new_cases = mean(new_cases_per_million, na.rm = TRUE),
+            new_deaths = mean(new_deaths_per_million, na.rm = TRUE),
+            people_vaccinated = max(people_vaccinated_per_hundred),
+            people_fully_vaccinated = max(people_fully_vaccinated_per_hundred)
+  ) %>%
+  na.omit()
+
+start_date_2 <- as.Date("2021-1-3"); end_date_2 <- as.Date("2021-12-01")
+before_vaccination <- owid_covid %>%
+  filter(date >= start_date_2 & date <= end_date_2) %>%
+  group_by(iso_code) %>%
+  summarise(new_cases = max(total_cases_per_million),
+            new_deaths = max(total_deaths_per_million),
+  ) %>%
+  na.omit()
+
+#join two tibbles
+compare <- inner_join(before_vaccination, after_vaccination, by="iso_code")
+
+
+#make new variables
+new_compare <- compare %>%
+  mutate(case_change = new_cases.y / new_cases.x * 100,
+         death_change = new_deaths.y / new_deaths.x * 100)
+new_compare <- new_compare %>%
+  filter(!is.na(death_change))
+```
+
+
+  Then, we wanted to compare the effect of vaccination categorically. Countires were assigned a new variable "vaccination_progress". If the variable "people_vaccinated" is under 20, then it was assigned low. Between 20 and 50 were assigned middle, and over 50 was assigned as high.
+  
+```{r echo = FALSE,  warning = FALSE}
+new.df <- new_compare %>% 
+  mutate(vaccination_progress = ifelse(people_vaccinated < 20, "low", 
+                                       ifelse(people_vaccinated > 50, "high", "middle"))) %>%
+  group_by(vaccination_progress)
+
+new.df$vaccination_progress <- factor(new.df$vaccination_progress, levels = c("low", "middle", "high"))
+```
+  This is the result of categorization.
+```{r,  warning = FALSE}
+table(new.df$vaccination_progress)
+```
+
+  Lastly, we made boxplots, and annotated the results of t.test with the boxplots.  
+
+```{r echo = FALSE,  warning = FALSE}
+my_comparisons <- list( c("low", "middle"), c("low", "high"), c("middle", "high") )
+
+case_plot <- ggboxplot(new.df, x = "vaccination_progress", y = "case_change",
+          color = "vaccination_progress", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons, method = "t.test", method.args = list(var.equal = FALSE))
+
+death_plot <- ggboxplot(new.df, x = "vaccination_progress", y = "death_change",
+          color = "vaccination_progress", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons, method = "t.test", method.args = list(var.equal = FALSE))
+
+grid.arrange(case_plot, death_plot, ncol = 2)
+```
+  
+  Boxplot clearly shows that vaccination progress significantly affects both the cases and deaths of COVID-19. Although most of the vaccines used gives the full effect after administration twice, this plot shows that even one dose of vaccination can affect COVID-19 seriousness.
+
+### III-3. What is more important between vaccination and several social distancing policies?
+
+  Then, we moved onto our next question, "What is more important between vaccination and several social distancing policies?". For analysis, we tried to construct a model which can explain the COVID-19 seriousness by vaccination and several social distancing policies.  
+
+#### Preprocessing      
+
+  First, we pre-processed the datasets.  All the datasets from our world in data was inner-joined by  country and date. Since the daily case or deaths has a fluctuation which can prevent the model fitting, we averaged those values by week. Then, we had to decide how to see the "seriouness change". Here, we used "3 week interval" since the real effect of vaccination and social distancing arises between 2-3weeks. Thus, we made a new variable "case_change" which is defined as averaged case devided by averaged case after 3 weeks. 
+
+```{r echo = FALSE,  warning = FALSE}
+standard = as.Date("2020-02-3")
+
+full_dataset <- full_dataset %>% 
+  mutate(week = ceiling(as.numeric(date - standard)/7)) %>%
+  mutate(week = ifelse(week<0, NA, week)) %>%
+  filter(!is.na(week))
+
+full_dataset$testing_policy <- as.numeric(full_dataset$testing_policy)
+full_dataset$contact_tracing <- as.numeric(full_dataset$contact_tracing)
+full_dataset$restrictions_internal_movements <- as.numeric(full_dataset$restrictions_internal_movements)
+full_dataset$restriction_gatherings <- as.numeric(full_dataset$restriction_gatherings)
+full_dataset$close_public_transport <- as.numeric(full_dataset$close_public_transport)
+full_dataset$school_closures <- as.numeric(full_dataset$school_closures)
+full_dataset$stay_home_requirements <- as.numeric(full_dataset$stay_home_requirements)
+full_dataset$workplace_closures <- as.numeric(full_dataset$workplace_closures)
+
+
+week.data <- full_dataset %>% 
+  unite(iso_week, iso_code, week, remove = F) %>%
+  group_by(iso_week) %>%
+  summarise(week = first(week),
+            iso = first(iso_code),
+            new_cases = mean(new_cases_per_million, na.rm = TRUE),
+            new_deaths = mean(new_deaths_per_million, na.rm = TRUE),
+            reproduction_rate = mean(reproduction_rate, na.rm = TRUE),
+            people_vaccinated = mean(people_vaccinated_per_hundred, na.rm = TRUE),
+            people_fully_vaccinated = mean(people_fully_vaccinated_per_hundred, na.rm = TRUE),
+            contact_tracing = mean(contact_tracing, na.rm = TRUE),
+            facial_coverings = mean(facial_coverings, na.rm = TRUE),
+            restrictions_internal_movements = mean(restrictions_internal_movements, na.rm = TRUE),
+            international_travel_controls = mean(international_travel_controls, na.rm = TRUE),
+            cancel_public_events = mean(cancel_public_events, na.rm = TRUE),
+            restriction_gatherings = mean(restriction_gatherings, na.rm = TRUE),
+            close_public_transport = mean(close_public_transport, na.rm = TRUE),
+            school_closures = mean(school_closures, na.rm = TRUE),
+            stay_home_requirements = mean(stay_home_requirements, na.rm = TRUE),
+            workplace_closures = mean(workplace_closures, na.rm = TRUE),
+            stringency = mean(stringency_index, na.rm = TRUE))
+
+diff <- 3
+mut_week.data <- week.data %>%
+  filter(!is.na(new_cases)) %>%
+  mutate(cases_3weeks = ifelse(paste(iso, week+diff, sep = "_") %in% week.data$iso_week,{
+    std_week <- week
+    filter(week.data, iso_week == paste(iso, std_week + diff, sep="_"))$new_cases},NA)) %>%
+  mutate(deaths_3weeks = ifelse(paste(iso, week+diff, sep = "_") %in% week.data$iso_week,{
+    std_week <- week
+    filter(week.data, iso_week == paste(iso, std_week + diff, sep="_"))$new_deaths},NA)) 
+
+mut_week.data$case_change <- mut_week.data$cases_3weeks / mut_week.data$new_cases
+mut_week.data$death_change <- mut_week.data$deaths_3weeks / mut_week.data$new_deaths
+
+mut_week.data <-  mut_week.data %>% 
+  filter(week>10) %>% 
+  mutate(people_vaccinated = ifelse(is.na(people_vaccinated), 0, people_vaccinated)) %>%
+  mutate(people_fully_vaccinated = ifelse(is.na(people_fully_vaccinated), 0, people_fully_vaccinated)) %>%
+  filter(case_change != Inf & death_change != Inf) %>%
+  na.omit()
+
+```
+
+
+#### Model 1. linear regression for the whole world data:  
+
+  First, we used linear regression.
+```{r,  warning = FALSE}
+model1.analysis <- lm(case_change~people_vaccinated + contact_tracing+facial_coverings+restrictions_internal_movements+
+                        cancel_public_events+restriction_gatherings+
+                        close_public_transport+school_closures+
+                        stay_home_requirements+workplace_closures,
+               data = mut_week.data)
+summary(model1.analysis)
+```
+  Here, we got the multiple R-squared value of 0.007444 and adjusted R-squared value of 0.00589. We thought a better model was needed.  
+ 
+#### Model 2. linear regression for Isreal data:  
+  
+  One thing was that even if some countires show same policy response, it does not really mean that they are making same policies with same stringency. Thus, we aimed to model country by country, not with the whole world data. 
+   
+  For modeling, we chose Israel as the model country since its vaccination rate is really high, and are already being used as a model country for COVID-19 immunization by several researchers. We again tried a second model, linear regression model for Israel data.
+```{r,  warning = FALSE}
+model2.df <- mut_week.data %>%
+  filter(iso == "ISR")
+
+model2.analysis <- lm(case_change~people_vaccinated + contact_tracing+facial_coverings+restrictions_internal_movements+
+                        cancel_public_events+restriction_gatherings+
+                        close_public_transport+school_closures+
+                        stay_home_requirements+workplace_closures,
+               data = model2.df)
+
+summary(model2.analysis)
+```
+  Here, it showed Multiple R-squared value of 0.764 and adjusted R-squared value of 0.7104. We could find that most of the variables where shown not to be significant in ths model. However, vaccination rate was shown to be significant. Also, some other variables, contact_tracing and close_public_transport were also significant.
+
+```{r,  warning = FALSE}
+model2_1.analysis <- lm(case_change~ people_vaccinated + 
+                          contact_tracing+ 
+                          close_public_transport,
+               data = model2.df)
+
+summary(model2_1.analysis)
+```
+  When eliminating the insignificant variables and re-modeled, it showed multiple R-squared value of 0.6788 and adjusted R-squared value of 0.6599. Also, all variables were shown to be significant. Although some of the social distancing policies were more significant than vaccination in this model, we concluded that vaccination significantly affects COVID-19 seriousness.
+
+#### Model 3. Random Forest for Israel data:  
+
+  Next, we tested if another model would work better than the simple linear regression. Here, we used random forest model.
+  
+```{r echo = FALSE,  warning = FALSE}
+set.seed(423)
+model2.df %>% initial_split(prop=0.7) -> model3_split
+
+model3_split %>% training() %>%
+  recipe(case_change~people_vaccinated + contact_tracing+
+           facial_coverings+restrictions_internal_movements+
+           cancel_public_events+restriction_gatherings+
+           close_public_transport+school_closures+
+           stay_home_requirements+workplace_closures,
+         data = model2.df)  %>%
+  step_corr(all_predictors()) %>%
+  step_center(all_predictors(), -all_outcomes()) %>%
+  step_scale(all_predictors(), -all_outcomes()) %>%
+  prep() -> model3.recipe
+
+model3.recipe %>%
+  bake(model3_split %>% testing()) -> model3.test
+
+model3.recipe %>%
+  juice() -> model3.train
+
+```
+  We used tidymodels for the job, and after extracting the recipe and applied the correlation filter, stay_home_requirements was removed due to high correlation.  
+ 
+```{r,  warning = FALSE}
+set.seed(1234)
+model3 <- randomForest(case_change~people_vaccinated + 
+                         contact_tracing+facial_coverings+
+                         restrictions_internal_movements+
+                         cancel_public_events+restriction_gatherings+
+                         close_public_transport+school_closures+
+                         workplace_closures,
+                         data=model3.train, mtry = 3, importance = TRUE)
+
+model3 %>%
+  predict(model3.test) %>%
+  bind_cols(model3.test) %>%
+  metrics(truth=case_change, estimate=...1)
+
+```
+  When tested on the testing data, we could got the r squared value of 0.974. Also, the other metrics were good, too.
+
+```{r,  warning = FALSE, echo = FALSE}
+varImpPlot(model3, type=1)
+```
+  Back to our previous goal, finding out the importance of vaccination or the social distancing policies, we plotted the importance values by MSE increase. Here, we could see that vaccination is in the fourth place. Its importance was a bit lower than some of the social distancing policies. However, vaccination was still important in the model.  
+  
+  One more thing interesting in two models was that school_closure was insignificant or not important in those models. Actually, there are so many disadvantages reported about the school closure policy, Korea government decided to fully open the schools next semester. Our observation supports this policy.  
+  
+
+### III-4. Which adverse effects are common in the vaccines?
+ 
+  Then, we tried to analyze the adverse effects of COVID-19 vaccines. In the datasets, there were only FDA-approved vaccines, we only used the Moderna and Pfizer vaccines.  
+
+```{r, echo = FALSE,  warning = FALSE}
+tidy_vacc %>%
+  filter(substr(VAX_MANU, 1, 6) == "PFIZER") %>%
+  filter(symptom != "")-> pfizer
+
+tidy_vacc %>%
+  filter(VAX_MANU== "MODERNA")  %>%
+  filter(symptom != "")-> moderna
+```
+
+```{r,  warning = FALSE}
+pfizer %>%
+  group_by(symptom) %>%
+  summarise(freq = n()/ nrow(pfizer) * 100) %>%
+  arrange(desc(freq)) %>%
+  head(20)
+```
+
+```{r,  warning = FALSE}
+moderna %>%
+  group_by(symptom) %>%
+  summarise(freq = n()/ nrow(moderna) * 100) %>%
+  arrange(desc(freq)) %>%
+  head(20)
+```
+  When arranging the most-occuring side effects of the vaccines, Those top 5 side effects were headache, fatigue, chills, pyrexia and pain. These are the most common side effects for every vaccines, which can be seen as 'normal' effect of the vaccines, by an immune response.  
+  
+  Then, we manually found the number of people administered those vaccines, and the percentage of age groups of vaccine administration.  
+  (link: https://www.statista.com/statistics/1198516/covid-19-vaccinations-administered-us-by-company/)  
+  (link: https://www.cdc.gov/coronavirus/2019-ncov/vaccines/different-vaccines.html)  
+
+```{r,  warning = FALSE, echo = FALSE}
+moderna_over_65 <- 25.3 * 125508313 / 100
+moderna_under_65 <- 74.7 * 125508313 / 100
+pfizer_over_65 <- 25 * 161050513 / 100
+pfizer_under_65 <- 75 * 161050513 / 100
+
+
+#tidy_vacc %>%
+#  group_by(SEX) %>%
+#  summarise(number = n())
+
+vacc_by_age_group <- tidy_vacc %>%
+  mutate(age_group = ifelse(CAGE_YR>=65, "over_65", "under_65"))
+#vacc_by_age_group %>% 
+#  group_by(age_group) %>%
+#  summarise(number = n())
+
+```
+```{r}
+moderna_by_age_group <- moderna %>%
+  mutate(age_group = ifelse(CAGE_YR>=65, "over_65", "under_65"))
+moderna_by_age_group %>%
+  group_by(age_group) %>%
+  summarise(number = n()) %>%
+  na.omit() %>%
+  cbind(total_vac = c(moderna_over_65, moderna_under_65)) %>%
+  mutate(symp_freq = number / total_vac * 100)
+
+```
+```{r}
+pfizer_by_age_group <- pfizer %>%
+  mutate(age_group = ifelse(CAGE_YR>=65, "over_65", "under_65"))
+pfizer_by_age_group %>%
+  group_by(age_group) %>%
+  summarise(number = n()) %>%
+  na.omit() %>%
+  cbind(total_vac = c(pfizer_over_65, pfizer_under_65)) %>%
+  mutate(symp_freq = number / total_vac * 100)
+```
+
+
+  Both in Moderna and Pfizer, side effect reporting rate did not showed significant difference between two age groups. However, we could find that Moderna's reporting rate was a lot bigger than Pfizer's reporting rate. 
+
+```{r,  warning = FALSE}
+
+
+pfizer_over_65 <- 
+  pfizer_by_age_group %>%
+  filter(age_group == "over_65") 
+pfizer_over_65 %>%
+  group_by(symptom) %>%
+  summarize(freq = n()/ nrow(pfizer_over_65)* 100) %>%
+  arrange(desc(freq)) %>%
+  head(10)
+  
+pfizer_under_65 <- pfizer_by_age_group %>%
+  filter(age_group == "under_65") 
+pfizer_under_65 %>%
+  group_by(symptom) %>%
+  summarize(freq = n() / nrow(pfizer_under_65) * 100) %>%
+  arrange(desc(freq)) %>%
+  head(10)
+```
+   
+  We then analyzed the common adverse effects of Pfizer, which is now used in Korea, by age groups. Most of them are same, but we could find that noticable proportion of people over 65s died.   
+  
+  Overall, there was difference in side effect reporting between different vaccines, and no difference between the age groups. However, death is sometimes reported in over 65s, and we thought that this is due to the physical condition or the underlying diseases.
+
+### III-5. Can we have less stringent social distancing after vaccination?
+
+ Our last question was whether we can have less stringent social distancing after vaccination or not. Here, we tried to find some examples from top vaccinated countries, and we found two great examples.
+```{r, echo = FALSE,  warning = FALSE}
+plot1 <- full_dataset %>% 
+  filter(iso_code == "CHL")%>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = new_cases_smoothed)) +
+  geom_line()
+
+plot2 <- full_dataset %>% 
+  filter(iso_code == "CHL") %>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = stringency_index)) +
+  geom_line()
+
+plot3 <- full_dataset %>% 
+  filter(iso_code == "CHL") %>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = people_vaccinated_per_hundred)) +
+  geom_line()
+
+
+grid.arrange(plot1, plot2, plot3, ncol=1)
+```
+
+ The first example is Chile. In Chile,vaccination rate is about 50%, but they did less stringent social distancing during vaccination. When the vaccination rate was about 40%, their daily new cases were in the peak.
+
+```{r, echo = FALSE,  warning = FALSE}
+
+
+plot1 <- full_dataset %>% 
+  filter(iso_code == "ISR")%>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = new_cases_smoothed)) +
+  geom_line()
+
+plot2 <- full_dataset %>% 
+  filter(iso_code == "ISR") %>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = stringency_index)) +
+  geom_line()
+
+plot3 <- full_dataset %>% 
+  filter(iso_code == "ISR") %>%
+  filter(date > as.Date("2020-4-1")) %>%
+  ggplot(aes(x = date, y = people_vaccinated_per_hundred)) +
+  geom_line()
+
+
+grid.arrange(plot1, plot2, plot3, ncol=1)
+
+
+```
+
+ Compared to it, Isreal did strong social distancing before the vaccination rate reaches about 50%. After that, even if they relieved social distancing policy, their daily new cases decreased over time.  
+ 
+ In this sector, we concluded that it is better to keep strong social distancing before 40 ~ 50% of people are at least once vaccinated.
+
+## IV. Conclusion  
+ Like this, we made four analysis points, and did a necessary analysis for each of the points. First, we checked that COVID-19 become less serious when more people are vaccinated. Also, by modeling, we foud that vaccination rate significantly affects the COVID-19 case change. However, some social distancing policies were shown to be more important than vaccination rate. Latly,we concluded that it is better to keep social distancing stringent during vaccination time.  
+  
+  While working on the project, we thought that if there are more datasets, we could do more analysis about various points. For example, vaccine adverse effect report system only contains vaccines that are approved by FDA. if there is Astrazeneca vaccine adverse effect dataset, it will be good to compare two vaccines, Astrazeneca and Moderna which are the most widely used vaccines in Korea. Also, vaccination progress by age can enable an analysis about the effect of vaccination by age.
+ 
+## V. R&R
+
+Kyungmin made data overview plots, tried linear modeling with different observations and countries. Also searched for VAERS dataset and did preprocessing.  
+Hyejin did OWID-COVID data preprocessing, made III-2 boxplot, made three models and analyzed VAERS dataset.
