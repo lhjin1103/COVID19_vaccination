@@ -22,4 +22,6 @@ https://vaers.hhs.gov/data.html
  Kyungmin made data overview plots, tried linear modeling with different observations and countries. Also
 searched for VAERS dataset and did preprocessing.  
  Hyejin did OWID-COVID data preprocessing, made III-2 boxplot, made three models and analyzed VAERS
-dataset.
+dataset.  
+  
+ Read the document to know more about our project!
